@@ -1,0 +1,148 @@
+---
+title: "客户流失预警分析"
+author: "葛宇泽 19307130176"
+date: "2021/10/22"
+output: html_document
+---
+
+<style>
+  P{
+       font-size:17px;
+  }
+<style/>
+
+### 1.读入训练数据
+
+```{r}
+setwd("F:\\2021秋季\\机器学习\\HW4")
+data = read.csv("sampledata.csv",header=T,fileEncoding = "UTF-8")
+```
+
+整理得到如下
+
+```{r}
+library(knitr)
+kable(summary(data))
+```
+
+### 2.绘制因变量和各个自变量的箱线图
+
+首先绘制各自变量与因变量的箱线图(中位数用横线表示,均值用点表示)
+
+```{r}
+library(ggplot2)
+library(Rmisc)
+p1 = ggplot(data=data, aes(x=factor(churn), y=tenure,gruop=2)) + geom_boxplot(col="blue") + labs(title="在网时长-是否流失分组箱线图",x="是否流失", y = "在网时长(天)")+stat_summary(fun="mean", geom="point")
+p2 = ggplot(data=data, aes(x=factor(churn), y=expense,gruop=2)) + geom_boxplot(col="blue") + labs(title="当月花费-是否流失分组箱线图",x="是否流失", y = "当月花费(元)")+stat_summary(fun="mean", geom="point")
+p3 = ggplot(data=data, aes(x=factor(churn), y=degree,gruop=2)) + geom_boxplot(col="blue") + labs(title="个体的度-是否流失分组箱线图",x="是否流失", y = "个体的度(人)")+stat_summary(fun="mean", geom="point")
+p4 = ggplot(data=data, aes(x=factor(churn), y=tightness,gruop=2)) + geom_boxplot(col="blue") + labs(title="联系强度-是否流失分组箱线图",x="是否流失", y = "联系强度(分钟/人")+stat_summary(fun="mean", geom="point")
+p5 = ggplot(data=data, aes(x=factor(churn), y=entropy,gruop=2)) + geom_boxplot(col="blue") + labs(title="个体信息熵-是否流失分组箱线图",x="是否流失", y = "个体信息熵")+stat_summary(fun="mean", geom="point")
+p6 = ggplot(data=data, aes(x=factor(churn), y=chgdegree,gruop=2)) + geom_boxplot(col="blue") + labs(title="个体度的变化-是否流失分组箱线图",x="是否流失", y = "个体度的变化(%)")+stat_summary(fun="mean", geom="point")
+p7 = ggplot(data=data, aes(x=factor(churn), y=chgexpense,gruop=2)) + geom_boxplot(col="blue") + labs(title="花费的变化-是否流失分组箱线图",x="是否流失", y = "花费的变化(%)")+stat_summary(fun="mean", geom="point")
+#图中点表示均值
+multiplot(p1,p2,cols=2)
+multiplot(p3,p4,cols=2)
+multiplot(p5,p6,p7,cols=3)
+
+```
+
+从图中可以大致看出，用户在网时间越长、当月花费越多、个体度越高、个体信息熵越大、个体度负向变化越小、花费负向变化越小，流失的可能性越低。是否流失在联系强度上差异不明显。
+
+另外,在网时长、当月花费、个体的度、联系强度数据有比较明显的右偏分布。对上述数据取对数后作出箱线图。
+
+```{r}
+p1 = ggplot(data=data, aes(x=factor(churn), y=log(tenure),gruop=2)) + geom_boxplot(col="blue") + labs(title="log(在网时长)-是否流失分组箱线图",x="是否流失", y = "在网时长(log(天))")+stat_summary(fun="mean", geom="point")
+p2 = ggplot(data=data, aes(x=factor(churn), y=log(expense),gruop=2)) + geom_boxplot(col="blue") + labs(title="log(当月花费)-是否流失分组箱线图",x="是否流失", y = "当月花费(log(元))")+stat_summary(fun="mean", geom="point")
+p3 = ggplot(data=data, aes(x=factor(churn), y=log(degree),gruop=2)) + geom_boxplot(col="blue") + labs(title="log(个体的度)-是否流失分组箱线图",x="是否流失", y = "个体的度(log(人))")+stat_summary(fun="mean", geom="point")
+p4 = ggplot(data=data, aes(x=factor(churn), y=log(tightness),gruop=2)) + geom_boxplot(col="blue") + labs(title="log(联系强度)-是否流失分组箱线图",x="是否流失", y = "联系强度(log(分钟/人))")+stat_summary(fun="mean", geom="point")
+multiplot(p1,p2,cols = 2)
+multiplot(p3,p4,cols = 2)
+```
+
+取对数后，偏态分布得到改善
+
+### 3.以是否流失为因变量，对自变量进行标准化,建立逻辑回归模型,给出系数估计结果,并对结果进行解读
+
+```{r}
+#标准化数据
+data2 = data
+data2$tenure = scale(data2$tenure)
+data2$expense = scale(data2$expense)
+data2$degree = scale(data2$degree)
+data2$tightness = scale(data2$tightness)
+data2$entropy = scale(data2$entropy)
+data2$chgexpense = scale(data2$chgexpense)
+data2$chgdegree = scale(data2$chgdegree)
+
+#建立模型
+model <- glm(churn ~ tenure + expense + degree  + entropy + tightness + chgdegree + chgexpense, family = "binomial"(link=logit), data = data2) 
+summary(model)
+```
+
+回归结果如下
+
+||估计值|标准误差|P值|
+|:-:|:-:|:-:|:-:|
+|Intercept|-5.053|0.072|0.000|
+|degree|-0.738|0.132|0.000|
+|chgdegree|-0.383|0.052|0.000|
+|entropy|-0.352|0.072|0.000|
+|expense|-0.292|0.059|0.000|
+|tenure|-0.248|0.061|0.000|
+|tightness|-0.227|0.043|0.000|
+|chgexpense|-0.161|0.049|0.001|
+
+回归结果显示，各自变量的P值均很小，说明是显著的。
+
+由公式$P(Y=1|X=x)=\frac{exp(x^\top \beta)}{1+exp(x^\top \beta)}$,且回归系数均小于0可知：x越大，流失的可能性越低。即用户在网时长、月花费、用户的度、用户联系强度、用户信息熵越大，个体度与花费正向变化越大，用户流失的可能性越低。
+
+由上述公式可知，回归系数绝对值越大，相应x每增加一个单位，大体上概率的改变量就越大(二者并非线性关系)。回归系数绝对值从大到小分别是：个体的度、个体度的改变、个体信息熵、当月花费、在网时长、联系强度、花费的变化。它们对流失概率影响的大小也是这个顺序。
+
+### 4.使用建立好的逻辑回归模型，分别对训练集和测试集进行预测，得到每个用户的预测流失概率值
+
+```{r}
+#读入测试集数据
+data_pred = read.csv("preddata.csv",header=T,fileEncoding = "UTF-8")
+
+#标准化测试集数据
+data_pred$tenure = scale(data_pred$tenure)
+data_pred$expense = scale(data_pred$expense)
+data_pred$degree = scale(data_pred$degree)
+data_pred$tightness = scale(data_pred$tightness)
+data_pred$entropy = scale(data_pred$entropy)
+data_pred$chgexpense = scale(data_pred$chgexpense)
+data_pred$chgdegree = scale(data_pred$chgdegree)
+
+#进行预测
+library(pROC)
+pred_sample = predict(model,data2,type = 'response')
+pred_test = predict(model,data_pred,type = 'response')
+```
+
+得到训练集预测概率如下
+
+```{r}
+summary(pred_sample)
+```
+
+得到测试集预测概率如下
+
+```{r}
+summary(pred_test)
+```
+
+### 5.借助问题4中预测的结果，分别绘制训练集和测试集上预测结果的ROC曲线，计算相应的AUC值，并根据ROC曲线和AUC值对模型进行评价
+
+对训练集结果绘制ROC曲线并计算出AUC
+```{r}
+roc_sample = roc(data2$churn,pred_sample)
+plot(roc_sample,print.auc = T,main='训练集ROC曲线')
+```
+
+对测试集结果绘制ROC曲线
+```{r}
+roc_test = roc(data_pred$churn,pred_test)
+plot(roc_test,print.auc = T,main='测试集ROC曲线')
+```
+
+训练集ROC曲线的AUC为0.773，测试集ROC曲线的AUC为0.782。二者均大于0.5且较大，而且二者大小相近。这说明模型有较好的预测效果，且不存在过拟合问题，有较好的泛化能力。

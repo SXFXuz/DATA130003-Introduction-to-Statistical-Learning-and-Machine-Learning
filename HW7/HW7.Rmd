@@ -1,0 +1,146 @@
+---
+title: "HW7"
+author: "葛宇泽 19307130176"
+date: "2021/11/30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<style>
+  P{
+       font-size:17px;
+  }
+<style/>
+
+## 1. 读入数据并了解各个自变量的含义
+```{r}
+setwd("F:/2021秋季/机器学习/HW6")
+data = read.csv("simudata.csv",sep=",",fileEncoding = 'UTF-8',head=T)
+data$black = factor(data$black)
+summary(data)
+```
+
+读入数据并汇总。自变量名称中结尾大写字母R表示最近一次消费到现在的时间距离，F表示消费频率，M表示平均消费金额，S衡量用户行为的波动性。
+
+由black均值为0.3337可知，违约用户占比为33.37%，违约用户与未违约用户比例约为1：2。
+
+
+## 2. 按照7:3划分训练集和测试集，用多种机器学习模型进行建模；在测试集上进行测试，绘制ROC曲线，计算AUC值。
+
+首先按7:3划分训练集和测试集
+```{r}
+#划分数据
+set.seed(1234)
+index = sample(nrow(data),0.7*nrow(data))
+train_set = data[index,]
+test_set = data[-index,]
+```
+
+### 逻辑回归模型
+```{r}
+suppressMessages(library(rpart))    
+suppressMessages(library(rpart.plot))
+suppressMessages(library(pROC))
+
+log.model = glm(formula = black~.,family = binomial(link = logit),data=train_set)
+log.pred = predict(log.model,test_set,type='response')
+log.roc = roc(test_set$black,log.pred)
+plot(log.roc,print.auc=T,grid=c(T,T),grid.col=c("black","black"),main='逻辑回归ROC曲线',
+     auc.polygon=T,auc.polygon.col='lightblue',max.auc.polygon=T)
+```
+
+### 决策树模型
+```{r}
+detree = rpart(black~.,data = train_set)
+predtree = predict(detree,newdata=test_set)
+tree.roc = roc(test_set$black,predtree[,2])
+plot(tree.roc,print.auc=T,grid=c(T,T),grid.col=c("black","black"),main='决策树ROC曲线',
+     auc.polygon=T,auc.polygon.col='lightblue',max.auc.polygon=T)
+```
+
+### Boosting模型
+```{r}
+suppressMessages(library(adabag))
+boosting.model = boosting(black~.,data = train_set)
+boosting.pred = predict(boosting.model,newdata = test_set,type='prob')
+boosting.roc = roc(test_set$black,boosting.pred$prob[,2])
+plot(boosting.roc,print.auc=T,grid=c(T,T),grid.col=c("black","black"),main='Boosting模型ROC曲线',
+     auc.polygon=T,auc.polygon.col='lightblue',max.auc.polygon=T)
+```
+
+### 随机森林模型
+```{r}
+suppressMessages(library(randomForest))
+rf.model = randomForest(black~.,data=train_set)
+rf.pred = predict(rf.model,newdata = test_set,type='prob')
+rf.roc = roc(test_set$black,rf.pred[,2])
+plot(rf.roc,print.auc=T,grid=c(T,T),grid.col=c("black","black"),main='随机森林ROC曲线',
+     auc.polygon=T,auc.polygon.col='lightblue',max.auc.polygon=T)
+```
+
+### SVM模型
+```{r}
+suppressMessages(library(e1071))
+svm.model = svm(black~.,data=train_set,prob=TRUE)
+svm.pred = predict(svm.model,newdata=test_set,prob=TRUE)
+svm.roc = roc(test_set$black,attr(svm.pred, "probabilities")[,2])
+plot(svm.roc,print.auc=T,grid=c(T,T),grid.col=c("black","black"),main='支持向量机ROC曲线',
+     auc.polygon=T,auc.polygon.col='lightblue',max.auc.polygon=T)
+```
+
+
+## 3.对比以上模型的AUC值和ROC曲线，选择一个最优的模型，并说明理由。
+
+```{r}
+vauc = c(round(log.roc$auc,3),round(tree.roc$auc,3),round(boosting.roc$auc,3),
+         round(rf.roc$auc,3),round(svm.roc$auc,3))
+vnames = c("逻辑回归",'决策树','Boosting','随机森林','支持向量机')
+vauc2 = data.frame(vauc=vauc,vnames=vnames)
+```
+
+对比各模型的ROC曲线
+```{r}
+plot(log.roc,grid=c(T,T),grid.col=c("black","black"),main='各模型ROC曲线',
+     auc.polygon=T,max.auc.polygon=T,col='orange')
+plot(tree.roc,add=TRUE,col='black')
+plot(boosting.roc,add=TRUE,col='yellow')
+plot(rf.roc,add=TRUE,col='red')
+plot(svm.roc,add=TRUE,col='blue')
+legend("bottomright",legend=c("逻辑回归","决策树","Boosting","随机森林","支持向量机"),
+       col=c("orange","black","yellow","red","blue"),lty=1,lwd=3)
+```
+
+画出各模型AUC值的柱状图
+```{r}
+library(ggplot2)
+ggplot(vauc2,aes(x=reorder(vnames,-vauc),y=vauc)) +
+        geom_bar(width = 0.5,stat='identity',fill=c("blue","lightblue","deepskyblue2","deepskyblue","lightslateblue")) +
+        labs(x='模型名称',y='测试集AUC值',title='各模型AUC值柱状图') + 
+        geom_text(mapping = aes(label = vauc), size = 4, vjust = -0.5)
+```
+
+整理得到各模型对应的AUC值:
+
+|模型|AUC|
+|:-:|:-:|
+|逻辑回归|0.832|
+|支持向量机|0.817|
+|Boosting|0.812|
+|随机森林|0.804|
+|决策树|0.668|
+
+选择逻辑回归模型作为最优模型。逻辑回归模型的AUC值最高，为0.832；且从各模型ROC曲线曲线图中可以看出，逻辑回归模型的ROC曲线大致包裹了其他模型的ROC曲线。这说明逻辑回归模型对该问题在测试集上分类正确率最高，泛化能力强。另外，在AUC值相近的几种模型中，逻辑回归模型的生成速度最快。SVM及集成学习方法的模型生成时间都比较长。所以选择逻辑回归作为最优模型。
+
+
+在五种模型中，决策树的AUC最低，为0.668，模型效果不够理想。其他4种模型效果相近，AUC均在0.8以上，
+模型效果较好。其中，Boosting和随机森林采用了集成学习方法，将多个弱分类器组合成强分类器，最终得到了较好的效果。
+
+```{r}
+summary(log.model)
+printcp(detree)
+```
+
+决策树模型的泛化能力较差。从逻辑回归模型的结果可以看出，该模型中变量creder(银行卡数),debitF(借记类F),meanpay(所有行为均值),billnum(交易笔数),sidaM(四大行M),xindaiR(信贷类R),cardnum(银行卡数),xindaiF(信贷类F),maxpay(所有行为最大值),zhuanzhangF(转账类F),gongjiaoF(公缴类F),zhuhanzhangR(转账类R),age(年龄) 13个变量的p值是显著的，对模型概率的预测有显著的作用。而决策树在预测中只使用了cardnum(银行卡数),creded(借贷比率),debitF(借记类F),maxpay(所有行为最大值),meanpay(所有行为均值),xindaiR(信贷类R),zhuanzhangF(转账类F) 7个变量。这说明逻辑回归模型更加充分的利用了训练数据，进而达到了更好的预测效果。

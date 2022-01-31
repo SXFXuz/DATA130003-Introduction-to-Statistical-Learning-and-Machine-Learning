@@ -1,0 +1,152 @@
+---
+title: "市长电话分析"
+author: "葛宇泽 19307130176"
+date: "2021/11/3"
+output: html_document
+---
+
+<style>
+  P{
+       font-size:17px;
+  }
+<style/>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### 1.读入市长电话训练集 trainset.csv 和测试集 testset.csv，统计训练集中各个政府单位接到的市民投诉量，并绘制柱状图（按照投诉量降序），简单陈述你观察到的现象
+
+```{r echo=TRUE}
+#读入数据
+setwd('F:/2021秋季/机器学习/HW5')
+data_train = read.csv('train_set.csv',header=T,fileEncoding = "UTF-8")
+data_test = read.csv('test_set.csv',header=T,fileEncoding = "UTF-8")
+
+library(knitr)
+library(ggplot2)
+```
+
+简要统计各政府单位收到的市民投诉量
+
+```{r echo=TRUE}
+complaint = as.data.frame(table(as.vector(data_train$'单位名称')))
+names(complaint) = c('name','num')
+complaints = complaint
+names(complaints) = c('政府单位','投诉数量')
+kable(complaints)
+```
+
+绘制柱状图
+
+```{r echo=TRUE}
+ggplot(complaint,aes(x=reorder(name,-num),y=num))+
+  geom_bar(stat = 'identity',fill='lightblue')+
+  labs(x='单位名称',y='投诉量(条)',title='各单位收到投诉量柱状图')+
+  geom_text(aes(label=num),vjust=-0.2)
+```
+
+1. 从图中可以看出，7个政府单位中，市水务集团收到的投诉最多，超过500条；市房地集团和市供电公司收到的投诉最少，均不超过100条。各单位收到投诉的数量在93到557之间。市供热公司、市运输管理局、市燃气集团收到投诉在300条左右，市公交集团收到投诉在200条左右。
+
+2. 从收到投诉的数量来看，市水务集团的服务质量较差，需要改进；市房地产集团和市供电公司服务较好，民众对其相对满意。
+
+### 2.统计每条投诉用词数并绘制分布直方图，简要分析你观察到的结果
+
+```{r echo=TRUE}
+#求出每条投诉的总词数
+data_train$rowsum = rowSums(data_train[,-1])
+#求出均值、中位数和众数
+data_mean = mean(data_train$rowsum)
+data_median = median(data_train$rowsum)
+library(modeest)
+data_mode = mfv(data_train$rowsum)
+ggplot(data_train,aes(x=data_train$rowsum)) + geom_histogram(bins = 25,fill='light blue') +
+  labs(x='投诉用词数',y='频数',title='投诉用词数频数分布直方图') + 
+  geom_vline(aes(xintercept=data_median), linetype="dashed") +
+  geom_text(x=data_median,y=350,label='中位数',size=3) +
+  geom_vline(aes(xintercept=data_mean),linetype='dashed') +
+  geom_text(x=data_mean,y=250,label='平均数',size=3) +
+  geom_vline(aes(xintercept=data_mode),linetype='dashed') +
+  geom_text(x=data_mode,y=450,label='众数',size=3) 
+
+summary(data_train$rowsum)
+```
+
+1.投诉用词最少为3，最多为144。观察直方图，投诉数据整体呈右偏分布，绝大部分投诉用词数低于50。大部分投诉用词较少，集中在10到30之间。
+
+2.大部分投诉比较简单。词数较多的投诉可能是居民存在较大困难，应予以重视。
+
+### 3.对每一个政府部门，统计每条投诉信息的词汇量，按照政府部门来绘制箱线图，尝试解读这个箱线图呈现的现象
+
+按中位数由高到低绘制分组箱线图
+```{r echo=TRUE}
+ggplot(data_train,aes(x=reorder(data_train$单位名称,-data_train$rowsum,median),y=data_train$rowsum)) +
+   geom_boxplot() + labs(x='单位名称',y ='投诉信息总词数',title='投诉信息总词数~政府单位分组箱线图' )
+```
+
+为了便于观察，将数据取对数后绘制分组箱线图
+```{r echo=TRUE}
+ggplot(data_train,aes(x=reorder(data_train$单位名称,-data_train$rowsum,median),y=log(data_train$rowsum))) +
+   geom_boxplot() + labs(x='单位名称',y ='log(投诉信息总词数)',title='log(投诉信息总词数)~政府单位分组箱线图' )
+```
+
+由图可知，大部分政府单位的投诉数量呈右偏分布，每个部门都大体符合上一问中直方图中的分布。
+
+总体上，各个单位收到的每条投诉的投诉词数都不多，大部分不超过40。
+各单位收到投诉词数相差不大，中位数都比较接近。
+市房地集团、市运输管理局和市燃气集团的投诉词数分布相对分散，而市供热公司的投诉词数分布最为集中。
+
+市房地集团收到的投诉词数相对较多，中位数最大，说明房地问题投诉描述相对复杂。市公交集团和市水务集团投诉次数与中位数相对较少，说明对这两类问题的投诉描述相对简单。
+
+### 4.以训练集中的政府单位为因变量类别，电话文本为自变量，尝试用朴素贝叶斯方法对市政电话文本进行分类，并使用该模型对测试集电话文本进行预测，计算混淆矩阵，简要分析模型的效果
+
+```{r echo=TRUE}
+library(e1071)
+data_train$rowsum = NULL
+
+trainset = data_train
+testset = data_test
+#词汇被使用记为1，未被使用记为0
+trainset[,-1] = trainset[,-1]>0
+testset[,-1] = testset[,-1]>0
+#构建模型并进行预测，在训练集和测试集上查看效果
+nB = naiveBayes(formula= 单位名称~.,data=trainset)
+nB_train = predict(nB,trainset[,-1])
+nB_pre = predict(nB,testset[,-1])
+```
+
+将模型运用在训练集上，查看效果
+```{r echo=TRUE}
+nB_train_table = table(Tru=trainset$单位名称,Hyp=nB_train)
+ggplot(as.data.frame(nB_train_table),aes(Hyp,Tru)) + 
+  geom_tile(aes(fill=Freq),color='white') + 
+  scale_fill_gradient(low='light blue',high='red') +
+  geom_text(aes(label=Freq)) + 
+  labs(title='训练集混淆矩阵',x='预测类别',y='真实类别')
+```
+
+准确率为
+```{r}
+acc_train = sum(diag(nB_train_table))/sum(nB_train_table)
+print(acc_train)
+```
+
+将模型运用在测试集上，查看效果
+```{r echo=TRUE}
+nB_test_table = table(Tru=testset$单位名称,Hyp=nB_pre)
+ggplot(as.data.frame(nB_test_table),aes(Hyp,Tru)) + 
+  geom_tile(aes(fill=Freq),color='white') + 
+  scale_fill_gradient(low='light blue',high='red') +
+  geom_text(aes(label=Freq)) + 
+  labs(title='测试集混淆矩阵',x='预测类别',y='真实类别')
+```
+
+准确率为
+```{r}
+acc_test = sum(diag(nB_test_table))/sum(nB_test_table)
+print(acc_test)
+```
+
+就模型的预测结果来看，准确率达到97%，准确率较高，预测结果很好。在预测结果中，错误只发生在真实类别为市房地集团和市供电公司两类上，这可能是因为训练集中这两类投诉数据最少。
+
+对训练集而言，模型的准确率达到99.16%，且测试集中的预测准确率也高达97%。这说明模型的拟合效果好，预测能力强，且有很好的泛化能力，没有出现过拟合现象。

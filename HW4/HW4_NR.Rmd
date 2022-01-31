@@ -1,0 +1,55 @@
+---
+title: "HW4  NR algorithm"
+author: "葛宇泽 19307130176"
+date: "2021/10/21"
+output: html_document
+---
+
+First write the NR algorithm
+```{r}
+logisticF = function(x){
+  z = 1/(1+exp(x))
+  return (z)
+}
+
+NR = function(N){
+  R = 200
+  beta_hat = matrix(nrow=3,ncol=0)
+  for (i in 1:R){     # Simulation for R times
+    X <- cbind(1,rnorm(N),rnorm(N))
+    Y <- logisticF(-X%*%beta)
+    Z <- runif(length(Y))
+    Y <- as.numeric(Y>Z)    #Generate label Y corresponding to X
+    beta_old = c(runif(3))  #Randomly generate initial vector
+    err = 1
+    while(err>=1e-5){
+      P = 1-logisticF(X%*%beta_old)         #Construct P
+      W =  diag(as.numeric((P*(1-P))))      #Construct W
+      D_l = t(X)%*%(Y-P)    #Find the gradient and the Hessian matrix
+      H_l = t(X)%*%W%*%X
+      beta_new = beta_old + solve(H_l)%*%D_l
+      err = max(abs(beta_new-beta_old))
+      beta_old = beta_new
+    }
+    beta_hat = cbind(beta_hat,beta_new)
+  }
+  return (beta_hat)
+}
+
+```
+
+Bring in the data and plot 
+```{r}
+beta <- matrix(c(0.5,1.2,-1),nrow=3,ncol=1)
+
+beta_1 = NR(200)
+beta_2 = NR(500)
+beta_3 = NR(800)
+beta_4 = NR(1000)
+
+boxplot(beta_1[1,]-beta[1],beta_2[1,]-beta[1],beta_3[1,]-beta[1],beta_4[1,]-beta[1],main='Boxplot of beta_hat_1 - beta_1 ',names=c('N=200','N=500','N=800','N=1000'))
+boxplot(beta_1[2,]-beta[2],beta_2[2,]-beta[2],beta_3[2,]-beta[2],beta_4[2,]-beta[2],main='Boxplot of beta_hat_2 - beta_2 ',names=c('N=200','N=500','N=800','N=1000'))
+boxplot(beta_1[3,]-beta[3],beta_2[3,]-beta[3],beta_3[3,]-beta[3],beta_4[3,]-beta[3],main='Boxplot of beta_hat_3 - beta_3 ',names=c('N=200','N=500','N=800','N=1000'))
+```
+
+As N increases, each beta component is getting closer to the true value, and the error distribution range is getting smaller, and the prediction value of beta is more concentrated.

@@ -1,0 +1,122 @@
+---
+title: "HW6"
+author: "葛宇泽 19307130176"
+date: "2021/11/18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<style>
+  P{
+       font-size:17px;
+  }
+<style/>
+
+### 1. 读入数据并了解各个自变量的含义
+
+```{r}
+setwd("F:/2021秋季/机器学习/HW6")
+data = read.csv("simudata.csv",sep=",",fileEncoding = 'UTF-8',head=T)
+data$black = factor(data$black)
+summary(data)
+```
+
+读入数据并汇总。自变量名称中结尾大写字母R表示最近一次消费到现在的时间距离，F表示消费频率，M表示平均消费金额，S衡量用户行为的波动性。
+
+由black均值为0.3337可知，违约用户占比为33.37%，违约用户与未违约用户比例约为1：2。
+
+### 2.对变量交易笔数和所有用户行为均值分别绘制违约组和非违约组的对比箱线图，并分析是否违约与这些变量之间的关系，给出解读
+
+画出分组箱线图\
+图中所有行为均值表示用户被记录的所有交易行为的平均金额。\
+圆点表示均值，横线表示中位数。
+
+```{r}
+options(warn =-1)
+library(ggplot2)
+ggplot(data,aes(x=black,y=billnum,color=black)) + geom_boxplot() + 
+  ggtitle("交易笔数-是否违约 分组箱线图") + labs(x='是否违约',y='交易笔数') + 
+  scale_x_discrete(labels=c('未违约','违约')) + 
+  stat_summary(fun=mean,color='purple') + guides(color=F)
+
+ggplot(data,aes(x=factor(black),y=meanpay,color=black)) + geom_boxplot() + 
+  ggtitle("用户所有行为均值-是否违约 分组箱线图") + labs(x='是否违约',y='用户所有行为均值') + 
+  scale_x_discrete(labels=c('未违约','违约')) + stat_summary(fun=mean,color='purple') + 
+  guides(color=F)
+```
+
+整体上看，两幅图中违约组与未违约组的数据均呈右偏分布，中位数大于平均数。
+无论是交易笔数还是用户行为均值，未违约用户数据的中位数和平均数都大于违约用户，数据分布较违约用户更为分散，数据整体要大于违约用户。
+
+以上数据说明，用户交易越频繁，交易平均金额越大，违约的可能性越低。超过一半未违约用户的交易笔数多于50笔，接近一半的未违约用户平均交易金额在两万五千元左右，而违约用户对应的数据则较低。这说明未违约用户的消费能力较强，有较多的高收入人群。
+
+### 3.按照7:3划分训练集和测试集，用决策树模型进行建模（提示：划分数据集时设定随机种子=1234；在R中可使用rpart函数，设置为默认参数）；在测试集上进行测试，绘制ROC曲线，计算AUC值
+
+```{r}
+library(rpart)
+library(pROC)
+#划分数据
+set.seed(1234)
+index = sample(nrow(data),0.7*nrow(data))
+train_set = data[index,]
+test_set = data[-index,]
+#生成决策树模型
+detree = rpart(black~.,data = train_set)
+printcp(detree)
+```
+由上述信息可知，决策树中实际使用的变量cardnum(银行卡数),creded(借贷比率),debitF(借记类F),maxpay(所有行为最大值),meanpay(所有行为均值),xindaiR(信贷类R),zhuanzhangF(转账类F)。
+其中，所有行为指用户被记录的所有交易行为。F指消费频率，R指最近一次消费，指上一次购买的时间到现在的距离
+
+作出ROC曲线并计算AUC：
+```{r}
+pretree = predict(detree,newdata=test_set)
+rcurve = roc(test_set$black,pretree[,2])
+plot(rcurve,print.auc=T,main='测试集ROC曲线',auc.polygon=T,auc.polygon.col='lightblue',max.auc.polygon=T)
+```
+
+下面计算预测准确率\
+首先计算混淆矩阵，0表示未违约，1表示违约
+```{r}
+pretree2 = pretree[,2]
+pretree2 = as.numeric(pretree2>0.5)
+cmatrix = table(test_set$black,pretree2,dnn=c('真实值','预测值'))
+#输出混淆矩阵
+print(cmatrix)
+```
+计算预测准确率
+```{r}
+acc = (cmatrix[1,1] + cmatrix[2,2])/sum(cmatrix)
+acc_b = cmatrix[2,2]/(cmatrix[2,2]+cmatrix[2,1])
+acc_a = cmatrix[1,1]/(cmatrix[1,1]+cmatrix[1,2])
+acc_v = c(acc,acc_b,acc_a)
+names(acc_v) = c("总体预测准确率","违约用户预测准确率","未违约用户预测准确率")
+print(acc_v)
+```
+决策树对预测集的预测率约为71.0%,
+总体的预测准确率不高。\
+决策树对未违约用户的预测准确率较高，为91.2%。对违约用户的预测率较低，只有约31.4%。
+可能是因为训练集中违约用户的数量相对较少。需要加强对违约用户特征的识别。\
+作出ROC曲线，AUC值为0.668，相对较低，预测结果不够理想。
+
+### 4. 画出决策树的图形，并进行解读
+```{r}
+library(rpart.plot)
+rpart.plot(detree,branch=1,type=2,fallen.leaves=T,cex=0.7,shadow.col = "gray",main='用户行为-是否违约决策树')
+```
+
+决策树中0表示未违约，1表示违约。百分数表示该节点中样本数占总样本数的比例。小数表示该节点中违约的样本数占节点总样本数的比率。叶节点中0或1表示最终分类的结果，内部节点中标出的数据表示将其该节点的子节点剪枝后，该节点作为新的叶节点对应的结果。
+
+该决策树共使用了7个变量特征，与第三问中分析相同。节点的左子树表示满足该节点条件，右子树表示不满足该节点条件。每个节点中0或1表示该节点的标签。
+
+就决策树的判断过程来看，首先判断所有行为均值是否大于等于39800元，若条件满足则判断为未违约，否则继续进行判断。决策树选择所有行为均值这一特征为最重要的特征。这可以理解为，交易平均金额高的人通常有更高的收入与消费水平，还款能力也就越强。
+
+若第一次判断条件不满足，则根据最近一次信贷消费距现在的时间判断。若时间少于197天则继续根据银行卡数判断，否则根据转账频率判断。决策树选择该特征为第二重要的特征，当用户交易平均金额不太高时，最近一次信贷消费的时间变得非常重要。时间间隔短的用户可能已经养成了信贷消费的习惯，会按时还款。
+
+若上述条件仍不满足，则按照决策树的子节点由高到低依次判断，直到到达叶节点。比如，决策树总是偏向将借贷比率高或银行卡数量少的用户划为未违约，将转账频率高的用户划为违约。借贷比率高说明用户经常进行信贷，而银行卡多、转账频率高则可能是用户借贷过多或因无力还款而“拆东墙补西墙”。再比如决策树会将交易平均金额较低而最大交易金额较高的用户划为违约，这可能是因为本身消费能力弱的用户不太可能负担得起高额消费，进行高额消费后会很可能无法还款。节点特征的重要性有高到低依次减弱。
+
+总体上看，决策树更倾向于将消费能力强、信贷习惯好、合理消费的用户划为未违约一类。
+
+由决策树的叶节点可以看出，大部分样本被划分为未违约一类。结合混淆矩阵与箱线图，未违约的用户各特征取值分布的范围更广，且预测为未违约的正确概率很高，预测为违约的正确概率较低，说明该决策树更偏向预测为未违约一类。
